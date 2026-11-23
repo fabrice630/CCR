@@ -1,0 +1,6 @@
+build/
+.dart_tool/
+*.jks
+key.properties
+android/key.properties
+.env

@@ -1,0 +1,44 @@
+name: ccr
+description: Application de l'église CCR
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cached_network_image: ^3.4.1
+  file_picker: ^8.1.2
+  firebase_core: ^3.8.1
+  firebase_messaging: ^15.1.6
+  http: ^1.2.2
+  path_provider: ^2.1.4
+  google_fonts: ^6.2.1
+  just_audio: ^0.9.40
+  just_audio_background: ^0.0.1-beta.13
+  youtube_player_iframe: ^5.2.1
+  shared_preferences: ^2.3.2
+  supabase_flutter: ^2.6.0
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_launcher_icons: ^0.14.1
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/ccr_logo.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/ccr_logo.png
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/ccr_logo.png

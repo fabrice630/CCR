@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CCR · Administration</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:linear-gradient(180deg,#0B3DCC,#061A4D 40%);min-height:100vh;color:#fff;margin:0;padding:20px}
+.box{max-width:560px;margin:0 auto}
+.top{display:flex;justify-content:space-between;align-items:center}
+.logo{background:#fff;color:#0B3DCC;font-weight:800;padding:8px 12px;border-radius:12px}
+.tabs{display:flex;gap:8px;overflow-x:auto;margin:20px 0}
+.tabs button{flex:none;width:auto;background:rgba(255,255,255,.12);color:#fff;padding:10px 16px;border-radius:999px}
+.tabs button.on{background:#fff;color:#0B3DCC}
+form,.item{background:rgba(255,255,255,.1);border-radius:18px;padding:16px;margin-bottom:12px}
+label{display:block;font-size:12px;opacity:.75;margin:0 0 4px 4px}
+input,select,textarea,button{width:100%;padding:12px;margin-bottom:12px;border-radius:12px;border:0;font:inherit}
+button{background:#fff;color:#0B3DCC;font-weight:700;cursor:pointer}
+button.del{background:#e24b4b;color:#fff;width:auto;margin:0;padding:8px 14px}
+.item{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.item small{opacity:.7;display:block}
+#msg{position:fixed;left:0;right:0;bottom:16px;text-align:center;font-weight:600;color:#9cd0ff}
+h2{font-size:18px;margin:24px 0 10px}
+</style>
+</head>
+<body>
+<div class="box">
+<div class="top"><div class="logo">CCR</div><button id="out" hidden style="width:auto;margin:0;padding:8px 14px">Déconnexion</button></div>
+<form id="login" style="margin-top:30px">
+<h2 style="margin-top:0">Connexion administrateur</h2>
+<input id="em" type="email" placeholder="Email" required>
+<input id="pw" type="password" placeholder="Mot de passe" required>
+<button>Se connecter</button>
+</form>
+<div id="panel" hidden>
+<div class="tabs" id="tabs"></div>
+<form id="form"></form>
+<h2>Déjà publié</h2>
+<div id="list"></div>
+</div>
+</div>
+<div id="msg"></div>
+<script src="config.js"></script>
+<script>
+// Remplace par tes valeurs : Supabase > Project Settings > API
+const CFG = window.CCR_CONFIG || {};
+if (!/^https:\/\//.test(CFG.url || "") || (CFG.key || "").length < 20 || CFG.url.includes("TON-PROJET")) {
+  document.body.innerHTML = "<p style='padding:20px'>Configuration manquante : renseigne config.js (URL et clé anon Supabase).</p>";
+  throw new Error("config");
+}
+const sb = supabase.createClient(CFG.url, CFG.key);
+const isYt = u => /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//.test(u);
+const MAX_MB = 50;
+const $ = i => document.getElementById(i);
+const say = t => { $("msg").textContent = t; setTimeout(() => $("msg").textContent = "", 5000); };
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const TABS = { message: "Messages audio", video: "Vidéos", live: "Directs", testimony: "Témoignages", annonce: "Annonces" };
+let tab = "message";
+
+async function check(){
+  const { data } = await sb.auth.getSession();
+  const on = !!data.session;
+  $("login").hidden = on; $("panel").hidden = !on; $("out").hidden = !on;
+  if (on) draw();
+}
+$("login").onsubmit = async e => {
+  e.preventDefault();
+  const { error } = await sb.auth.signInWithPassword({ email: $("em").value, password: $("pw").value });
+  if (error) say("Connexion refusée : " + error.message); else check();
+};
+$("out").onclick = async () => { await sb.auth.signOut(); check(); };
+
+function draw(){
+  $("tabs").innerHTML = Object.entries(TABS).map(([k, v]) => `<button class="${k === tab ? "on" : ""}" data-t="${k}">${v}</button>`).join("");
+  document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => { tab = b.dataset.t; draw(); });
+  const date = `<label>Date de publication (laisser vide = maintenant, ou programmer plus tard)</label><input id="dt" type="datetime-local">`;
+  let h = "";
+  if (tab === "live") h = `<label>Titre du direct</label><input id="ti" placeholder="Culte du dimanche" required><label>Lien du direct YouTube</label><input id="yt" type="url" placeholder="https://youtube.com/live/..." required><label>Date et heure du direct</label><input id="dt" type="datetime-local" required><label style="display:flex;gap:10px;align-items:center;font-size:14px;opacity:1"><input id="wk" type="checkbox" style="width:auto;margin:0"> Répéter chaque semaine (ex : tous les dimanches)</label><br><button>Programmer le direct</button>`;
+  else if (tab === "annonce") h = `<label>Titre</label><input id="ti" required><label>Détails (lieu, heure...)</label><textarea id="bo" rows="3"></textarea><label>Date de l’événement</label><input id="ev" type="datetime-local"><button>Publier l’annonce</button>`;
+  else {
+    h = `<label>Titre</label><input id="ti" required><label>Prédicateur / personne</label><input id="pr" value="Pasteur Principal">`;
+    h += tab === "video"
+      ? `<label>Lien YouTube de la vidéo (non répertoriée)</label><input id="yt" type="url" placeholder="https://youtu.be/..." required>`
+      : `<label>Fichier audio (mp3, m4a)</label><input id="fi" type="file" accept="audio/*" required>`;
+    h += date + `<button>Publier</button>`;
+  }
+  $("form").innerHTML = `<h2 style="margin-top:0">Nouveau : ${TABS[tab]}</h2>` + h;
+  load();
+}
+
+function duration(file){
+  return new Promise(res => {
+    const a = new Audio(URL.createObjectURL(file));
+    a.onloadedmetadata = () => res(Math.round(a.duration) || 0);
+    a.onerror = () => res(0);
+  });
+}
+const iso = id => $(id) && $(id).value ? new Date($(id).value).toISOString() : null;
+
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  say("Publication en cours, ne ferme pas la page…");
+  let error;
+  if (tab === "live") {
+    if (!isYt($("yt").value)) return say("Colle un lien YouTube valide.");
+    ({ error } = await sb.from("lives").insert({ title: $("ti").value, url: $("yt").value, starts_at: iso("dt"), weekly: $("wk").checked }));
+  } else if (tab === "annonce") {
+    ({ error } = await sb.from("announcements").insert({ title: $("ti").value, body: $("bo").value, event_at: iso("ev") }));
+  } else {
+    let url, secs = 0, uploaded = null;
+    if (tab === "video") {
+      url = $("yt").value;
+      if (!isYt(url)) return say("Colle un lien YouTube valide.");
+    } else {
+      const f = $("fi").files[0];
+      if (!/\.(mp3|m4a|aac|wav|ogg)$/i.test(f.name)) return say("Format refusé : mp3, m4a, aac, wav ou ogg.");
+      if (f.size > MAX_MB * 1048576) return say("Fichier trop lourd (max " + MAX_MB + " Mo). Compresse-le en mono 64 kbps.");
+      const path = crypto.randomUUID() + "-" + f.name.replace(/[^\w.]/g, "_");
+      const up = await sb.storage.from("media").upload(path, f);
+      if (up.error) return say("Erreur d’envoi : " + up.error.message);
+      uploaded = path;
+      url = sb.storage.from("media").getPublicUrl(path).data.publicUrl;
+      secs = await duration(f);
+    }
+    const row = { title: $("ti").value, preacher: $("pr").value, kind: tab, media_url: url, secs };
+    if (iso("dt")) row.published_at = iso("dt");
+    ({ error } = await sb.from("messages").insert(row));
+    if (error && uploaded) await sb.storage.from("media").remove([uploaded]); // pas de fichier orphelin
+  }
+  say(error ? "Erreur : " + error.message : "Publié. C’est visible dans l’app.");
+  if (!error) draw();
+};
+
+async function load(){
+  const q = tab === "live"
+    ? sb.from("lives").select("id,title,starts_at,weekly").order("starts_at", { ascending: false })
+    : tab === "annonce"
+    ? sb.from("announcements").select("id,title,created_at").order("created_at", { ascending: false })
+    : sb.from("messages").select("id,title,media_url,published_at").eq("kind", tab).order("published_at", { ascending: false });
+  const { data, error } = await q;
+  if (error) return say(error.message);
+  $("list").innerHTML = data.length ? data.map(r => `<div class="item"><div>${esc(r.title)}<small>${new Date(r.published_at || r.starts_at || r.created_at).toLocaleString("fr-FR")}${r.weekly ? " · chaque semaine" : ""}</small></div><button class="del" data-id="${r.id}" data-u="${esc(r.media_url || "")}">Supprimer</button></div>`).join("") : "<p style='opacity:.7'>Rien pour le moment.</p>";
+  document.querySelectorAll(".del").forEach(b => b.onclick = async () => {
+    if (!confirm("Supprimer définitivement ?")) return;
+    const table = tab === "live" ? "lives" : tab === "annonce" ? "announcements" : "messages";
+    const { error } = await sb.from(table).delete().eq("id", b.dataset.id);
+    if (error) return say("Suppression refusée : " + error.message);
+    const p = b.dataset.u.split("/media/")[1] || "";
+    if (table === "messages" && p) {
+      const r = await sb.storage.from("media").remove([p]);
+      if (r.error) say("Supprimé, mais le fichier n’a pas pu être effacé : " + r.error.message);
+    }
+    load();
+  });
+}
+check();
+</script>
+</body>
+</html>
